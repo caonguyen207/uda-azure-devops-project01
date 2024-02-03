@@ -37,20 +37,20 @@ resource "azurerm_network_security_group" "sg_nguyenlc1_udadevops_prj1_01" {
   }
 }
 
-# Create security rules
-# resource "azurerm_network_security_rule" "sg_rule_nguyenlc1_udadevops_prj1_01" {
-#   name                        = "sg_rule_nguyenlc1_udadevops_prj1_01"
-#   priority                    = 1000
-#   direction                   = "Inbound"
-#   access                      = "Allow"
-#   protocol                    = "Tcp"
-#   source_port_range           = "*"
-#   destination_port_range      = "80"
-#   source_address_prefix       = "*"
-#   destination_address_prefix  = "*"
-#   resource_group_name         = var.resource_group_name
-#   network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
-# }
+# Deny Inbound Traffic from the Internet:
+resource "azurerm_network_security_rule" "rule_deny_inbound" {
+  name                        = "deny_internet_access"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Deny"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "*"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
+}
 
 # Associate security group to rules
 resource "azurerm_subnet_network_security_group_association" "nsg_association_01" {
@@ -112,10 +112,9 @@ resource "azurerm_lb" "lb_nguyenlc1_udadevops_proj1_01" {
 resource "azurerm_lb_probe" "lb_probe_nguyenlc1_proj1_01" {
   loadbalancer_id = azurerm_lb.lb_nguyenlc1_udadevops_proj1_01.id
   name            = "running-probe"
-  port            = 80
+  port            = var.application_port
   interval_in_seconds = 10
-  protocol = "Http"
-  request_path = "/"
+  protocol = "Tcp"
 }
 
 # Create LoadBalancer Rules
@@ -123,8 +122,8 @@ resource "azurerm_lb_rule" "lb_rule_nguyenlc1_udadevops_proj1_01" {
   loadbalancer_id                = azurerm_lb.lb_nguyenlc1_udadevops_proj1_01.id
   name                           = "LoadBalancerRule"
   protocol                       = "Tcp"
-  frontend_port                  = 8080
-  backend_port                   = 80
+  frontend_port                  = var.lb_frontend_port
+  backend_port                   = var.application_port
   frontend_ip_configuration_name = "PublicIPAddress"
 
   backend_address_pool_ids = [azurerm_lb_backend_address_pool.lb_pool_nguyenlc1_udadevops_proj1_01.id]
@@ -198,48 +197,4 @@ resource "azurerm_linux_virtual_machine" "vm-nguyenlc1_udadevops_prj1" {
 
   # Make sure that network interface + Availability Set are created first.
   depends_on = [azurerm_network_interface.ni_nguyenlc1_udadevops_prj1_01, azurerm_availability_set.as_nguyenlc1_udadevops_proj1_01]
-}
-
-# Create testing virtual machine to verify web services.
-
-resource "azurerm_network_interface" "ni_testing_vm" {
-  name                = "ni_testing_vm"
-  resource_group_name = var.resource_group_name
-  location            = var.resource_group_location
-  ip_configuration {
-    name                          = "BackendConfiguration2"
-    subnet_id                     = azurerm_subnet.subnet_nguyenlc1_udadevops_01.id
-    private_ip_address_allocation = "Dynamic"
-  }
-
-  tags = {
-    "environment" : "Development"
-  }
-}
-resource "azurerm_linux_virtual_machine" "vm-testing" {
-  name = "vm-testing"
-  resource_group_name = var.resource_group_name
-  location = var.resource_group_location
-  
-  network_interface_ids = [azurerm_network_interface.ni_testing_vm.id]
-  source_image_id = data.azurerm_image.my-image.id
-  size = var.vm_size
-
-  # Define more params 
-  os_disk {
-    name                 = "disk-testing-vm"
-    disk_size_gb         = 50
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  admin_ssh_key {
-    username = var.admin_username
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
-  admin_username = var.admin_username
-
-  tags = {
-    environment = "Development"
-  }
 }

@@ -12,7 +12,7 @@ resource "azurerm_virtual_network" "vnet_nguyenlc1_udadevops_01" {
   address_space       = ["192.168.0.0/16"]
 
   tags = {
-    environment = "Development"
+    environment = var.default_environment
   }
 }
 
@@ -33,14 +33,14 @@ resource "azurerm_network_security_group" "sg_nguyenlc1_udadevops_prj1_01" {
   resource_group_name = var.resource_group_name
 
   tags = {
-    environment = "Development"
+    environment = var.default_environment
   }
 }
 
 # Deny Inbound Traffic from the Internet:
-resource "azurerm_network_security_rule" "rule_deny_inbound" {
-  name                        = "deny_internet_access"
-  priority                    = 100
+resource "azurerm_network_security_rule" "deny_internet" {
+  name                        = "deny_internet"
+  priority                    = 121
   direction                   = "Inbound"
   access                      = "Deny"
   protocol                    = "*"
@@ -48,6 +48,51 @@ resource "azurerm_network_security_rule" "rule_deny_inbound" {
   destination_port_range      = "*"
   source_address_prefix       = "*"
   destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
+}
+
+# Allow traffic within the Same Virtual Network
+resource "azurerm_network_security_rule" "allow_internal_inbound" {
+  name                        = "allow_internal_inbound"
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*" 
+  destination_port_range      = "*"
+  source_address_prefix       = "VirtualNetwork"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
+}
+
+# Allow HTTP Traffic from the Load Balancer to the VMs
+resource "azurerm_network_security_rule" "allow_inbound_lb" {
+  name                        = "allow_lb_inbound"
+  priority                    = 130
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "AzureLoadBalancer"
+  destination_address_prefix  = "VirtualNetwork"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
+}
+
+# Allow outbound traffic within the Same Virtual Network
+resource "azurerm_network_security_rule" "allow_internal_outbound" {
+  name                        = "allow_internal_outbound"
+  priority                    = 100
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "*"
+  source_port_range           = "*"
+  destination_port_range      = "*"
+  source_address_prefix       = "VirtualNetwork"
+  destination_address_prefix  = "VirtualNetwork"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.name
 }
@@ -61,34 +106,16 @@ resource "azurerm_subnet_network_security_group_association" "nsg_association_01
   ]
 }
 
-# Create network interface
-resource "azurerm_network_interface" "ni_nguyenlc1_udadevops_prj1_01" {
-  count               = var.no_of_vm
-  name                = "ni_nguyenlc1_udadevops_prj1_${count.index}" # Each VM will have dedicated NIC
-  resource_group_name = var.resource_group_name
-  location            = var.resource_group_location
-  ip_configuration {
-    name                          = "BackendConfiguration"
-    subnet_id                     = azurerm_subnet.subnet_nguyenlc1_udadevops_01.id
-    private_ip_address_allocation = "Dynamic"
-  }
-
-  tags = {
-    "environment" : "Development"
-  }
-}
-
 # Create Public IP address
 resource "azurerm_public_ip" "pip_nguyenlc1_udadevops_proj1_01" {
   name                = "pip_nguyenlc1_udadevops_proj1_01"
   location            = var.resource_group_location
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
-  sku                 = "Basic"
-  sku_tier            = "Regional"
+  sku                 = var.lb_sku_type
 
   tags = {
-    environment : "Development"
+    environment : var.default_environment
   }
 }
 
@@ -97,6 +124,7 @@ resource "azurerm_lb" "lb_nguyenlc1_udadevops_proj1_01" {
   name                = "lb_nguyenlc1_udadevops_proj1_01"
   location            = var.resource_group_location
   resource_group_name = var.resource_group_name
+  sku = var.lb_sku_type
 
   frontend_ip_configuration {
     name                 = "PublicIPAddress"
@@ -104,7 +132,7 @@ resource "azurerm_lb" "lb_nguyenlc1_udadevops_proj1_01" {
   }
 
   tags = {
-    "environment" = "Development"
+    "environment" = var.default_environment
   }
 }
 
@@ -140,61 +168,38 @@ resource "azurerm_lb_backend_address_pool" "lb_pool_nguyenlc1_udadevops_proj1_01
   name            = "LBBackEndAddressPool"
 }
 
-# Associate with network interface and backend pool
-resource "azurerm_network_interface_backend_address_pool_association" "be_pool_association" {
-  count                   = var.no_of_vm
-  network_interface_id    = element(azurerm_network_interface.ni_nguyenlc1_udadevops_prj1_01.*.id, count.index)
-  ip_configuration_name   = "BackendConfiguration"
-  backend_address_pool_id = azurerm_lb_backend_address_pool.lb_pool_nguyenlc1_udadevops_proj1_01.id
-}
-
-# Availabity Set
-resource "azurerm_availability_set" "as_nguyenlc1_udadevops_proj1_01" {
-  name                         = "MyFirstAvailabilitySet"
-  location                     = var.resource_group_location
-  resource_group_name          = var.resource_group_name
-  platform_fault_domain_count  = 2
-  platform_update_domain_count = 2
-
-  tags = {
-    environment = "Development"
-  }
-}
-
-# Create virtual machine as worker of backed pool
-resource "azurerm_linux_virtual_machine" "vm-nguyenlc1_udadevops_prj1" {
-  count               = var.no_of_vm # Create number of VM based on user input
-  name                = "vm-${count.index}"
-  resource_group_name = var.resource_group_name
-  location            = var.resource_group_location
-  size                = var.vm_size
-
-  network_interface_ids = [
-    azurerm_network_interface.ni_nguyenlc1_udadevops_prj1_01[count.index].id,
-  ]
-  # Associate with Availability Set
-  availability_set_id = azurerm_availability_set.as_nguyenlc1_udadevops_proj1_01.id
-
-  # Use existing disk
-  source_image_id = data.azurerm_image.my-image.id
-
-  # Define more params 
-  os_disk {
-    name                 = "disk-${count.index}"
-    disk_size_gb         = 50
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  computer_name                   = "web-application"
+# Use VMSS instead of AS, number of instances can change in variable environment.
+resource "azurerm_linux_virtual_machine_scale_set" "vmss" {
+  name                            = "vmss-app"
+  resource_group_name             = var.resource_group_name
+  location                        = var.resource_group_location
+  sku                             = var.vm_size
+  instances                       = var.no_of_vm
   admin_username                  = var.admin_username
   admin_password                  = var.admin_password
   disable_password_authentication = false
 
-  tags = {
-    environment = "Development"
+  source_image_id = data.azurerm_image.my-image.id
+
+  os_disk {
+    storage_account_type = "Standard_LRS"
+    caching              = "ReadWrite"
+    disk_size_gb         = 30
   }
 
-  # Make sure that network interface + Availability Set are created first.
-  depends_on = [azurerm_network_interface.ni_nguyenlc1_udadevops_prj1_01, azurerm_availability_set.as_nguyenlc1_udadevops_proj1_01]
+  network_interface {
+    name                      = "vmss-app-ni"
+    primary                   = true
+    network_security_group_id = azurerm_network_security_group.sg_nguyenlc1_udadevops_prj1_01.id
+
+    ip_configuration {
+      name                                   = "internal"
+      primary                                = true
+      subnet_id                              = azurerm_subnet.subnet_nguyenlc1_udadevops_01.id
+      load_balancer_backend_address_pool_ids = [azurerm_lb_backend_address_pool.lb_pool_nguyenlc1_udadevops_proj1_01.id]
+    }
+  }
+  tags = {
+    environment = var.default_environment
+  }
 }

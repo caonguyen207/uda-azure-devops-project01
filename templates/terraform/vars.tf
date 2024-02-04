@@ -13,7 +13,7 @@ variable "resource_group_name" {
 
 variable "no_of_vm" {
   description = "No of VMs."
-  default     = 2
+  default     = 1
 }
 
 variable "vm_size" {
@@ -34,6 +34,26 @@ variable "admin_username" {
 variable "admin_password" {
   default     = "12345678x@X"
   description = "Password use to login to VM"
+}
+
+variable "application_port" {
+  default     = "80"
+  description = "Nginx listening port"
+}
+
+variable "lb_frontend_port" {
+  default     = "8080"
+  description = "Default load balancer frontend port"
+}
+
+variable "lb_sku_type" {
+  default = "Standard"
+  description = "Type of load balancer"
+}
+
+variable "default_environment" {
+  default = "Development"
+  description = "Default environment name"
 }
 
 

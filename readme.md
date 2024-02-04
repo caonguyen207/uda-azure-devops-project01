@@ -40,3 +40,4 @@ export ARM_TENANT_ID="<TENANT_VALUE>"
     
 #### Reference links:
 1. [AZURERM DOCUMENTATION](https://registry.terraform.io/providers/hashicorp/azurerm)
+2. [Security Group Definition](https://www.turingtaco.com/configuring-nsgs-in-azure-a-crucial-step-for-udacitys-deploying-a-web-server-project/)
